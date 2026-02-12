@@ -50,13 +50,14 @@
                 this.player.anchor.setTo(0.5, 0.5);
                 game.physics.arcade.enable(this.player);
                 this.player.body.collideWorldBounds = true;
-                this.player.body.setSize(20, 20, 15, 15); // 충돌 영역을 더 작게
+                this.player.body.setSize(20, 20, 15, 15);
 
                 // 총알 그룹
                 this.bullets = game.add.group();
                 this.bullets.enableBody = true;
+                this.bullets.physicsBodyType = Phaser.Physics.ARCADE;
 
-                // 조작 (WASD)
+                // 조작
                 this.cursors = game.input.keyboard.createCursorKeys();
                 this.wasd = {
                     up: game.input.keyboard.addKey(Phaser.Keyboard.W),
@@ -65,30 +66,28 @@
                     right: game.input.keyboard.addKey(Phaser.Keyboard.D)
                 };
 
-                // 드래그 조작
                 this.isDragging = false;
                 game.input.onDown.add(function() { this.isDragging = true; }, this);
                 game.input.onUp.add(function() { this.isDragging = false; }, this);
 
                 // UI
-                this.scoreLabel = game.add.text(20, 20, "Survive!", { font: "24px Arial", fill: "#00ffff" });
+                this.scoreLabel = game.add.text(20, 20, "Ready...", { font: "24px Arial", fill: "#00ffff" });
+                this.debugLabel = game.add.text(20, 50, "", { font: "14px Arial", fill: "#ffffff" });
 
-                // 2-3초 뒤부터 총알 생성 시작
-                this.bulletTimer = null;
-                game.time.events.add(2500, this.startSpawning, this);
+                // 시작 지연
+                game.time.events.add(2000, this.startSpawning, this);
             },
 
             startSpawning: function() {
                 if (this.isGameOver) return;
-                // 많은 총알을 더 자주 생성 (150ms 마다)
-                this.bulletTimer = game.time.events.loop(150, this.spawnBullet, this);
+                // 더 많은 총알 생성 (100ms 마다)
+                game.time.events.loop(100, this.spawnBullet, this);
                 this.scoreLabel.text = "Time: 0s";
             },
 
             update: function() {
                 if (this.isGameOver) return;
 
-                // 조작 로직
                 var speed = 250;
                 this.player.body.velocity.setTo(0, 0);
 
@@ -99,16 +98,17 @@
                 else if (this.wasd.down.isDown || this.cursors.down.isDown) this.player.body.velocity.y = speed;
 
                 if (this.isDragging) {
-                    game.physics.arcade.moveToPointer(this.player, speed * 1.2);
+                    game.physics.arcade.moveToPointer(this.player, speed * 1.5);
                 }
 
                 // 충돌 체크
                 game.physics.arcade.overlap(this.player, this.bullets, this.die, null, this);
 
-                // 시간 업데이트 (스폰 시작 이후부터 카운트)
-                if (this.bulletTimer) {
-                    var elapsed = Math.floor((game.time.now - (this.startTime + 2500)) / 1000);
-                    if (elapsed >= 0) this.scoreLabel.text = "Time: " + elapsed + "s";
+                // 점수 및 디버그
+                var elapsed = Math.floor((game.time.now - (this.startTime + 2000)) / 1000);
+                if (elapsed >= 0) {
+                    this.scoreLabel.text = "Time: " + elapsed + "s";
+                    this.debugLabel.text = "Bullets: " + this.bullets.countLiving();
                 }
                 
                 this.space.tilePosition.y += 0.5;
@@ -119,34 +119,33 @@
 
                 var side = game.rnd.integerInRange(0, 3);
                 var x, y, vx, vy;
-                // 천천히 날아오게 속도 하향 조절 (80~150)
-                var speed = game.rnd.integerInRange(80, 150);
+                var speed = game.rnd.integerInRange(100, 200);
 
-                if (side === 0) { // Top
-                    x = game.rnd.integerInRange(0, 400); y = -20;
-                    vx = game.rnd.integerInRange(-30, 30); vy = speed;
-                } else if (side === 1) { // Bottom
-                    x = game.rnd.integerInRange(0, 400); y = 620;
-                    vx = game.rnd.integerInRange(-30, 30); vy = -speed;
-                } else if (side === 2) { // Left
-                    x = -20; y = game.rnd.integerInRange(0, 600);
-                    vx = speed; vy = game.rnd.integerInRange(-30, 30);
-                } else { // Right
-                    x = 420; y = game.rnd.integerInRange(0, 600);
-                    vx = -speed; vy = game.rnd.integerInRange(-30, 30);
+                // 화면 밖에서 생성하되, outOfBoundsKill이 즉시 작동하지 않도록 주의
+                if (side === 0) { x = game.rnd.integerInRange(0, 400); y = -10; vx = game.rnd.integerInRange(-50, 50); vy = speed; }
+                else if (side === 1) { x = game.rnd.integerInRange(0, 400); y = 610; vx = game.rnd.integerInRange(-50, 50); vy = -speed; }
+                else if (side === 2) { x = -10; y = game.rnd.integerInRange(0, 600); vx = speed; vy = game.rnd.integerInRange(-50, 50); }
+                else { x = 410; y = game.rnd.integerInRange(0, 600); vx = -speed; vy = game.rnd.integerInRange(-50, 50); }
+
+                var bullet = this.bullets.getFirstExists(false);
+                if (!bullet) {
+                    bullet = this.bullets.create(x, y, 'bullet');
+                } else {
+                    bullet.reset(x, y);
                 }
 
-                var bullet = this.bullets.create(x, y, 'bullet');
                 bullet.anchor.setTo(0.5, 0.5);
                 bullet.body.velocity.setTo(vx, vy);
-                bullet.checkWorldBounds = true;
-                bullet.outOfBoundsKill = true;
+                
+                // 화면에 들어왔다가 나갈 때 죽이도록 설정
+                bullet.checkWorldBounds = false; // 일단 끔
+                bullet.outOfBoundsKill = false;
             },
 
             die: function() {
                 if (this.isGameOver) return;
                 this.isGameOver = true;
-                if (this.bulletTimer) game.time.events.remove(this.bulletTimer);
+                this.player.alive = false;
                 this.bullets.setAll('body.velocity.x', 0);
                 this.bullets.setAll('body.velocity.y', 0);
 
